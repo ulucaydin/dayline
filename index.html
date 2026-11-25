@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f8f9f5" />
+    <meta name="description" content="A calm task planner for work, life, and the one thing you can do next." />
+    <link rel="icon" href="./icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <title>Today · Dayline</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to tasks</a>
+    <div id="app">
+      <aside class="sidebar" aria-label="Dayline">
+        <a href="#today" class="brand" aria-label="Dayline home">
+          <img src="./icons/icon-192.png" width="36" height="36" alt="" />
+          <span>dayline<span class="brand-dot">.</span></span>
+        </a>
+        <button class="button primary sidebar-add" data-action="voice-main" data-voice-control="workspace" data-voice-label="Speak">
+          <span class="mic-symbol" aria-hidden="true"></span>
+          <span class="voice-label">Speak</span>
+          <kbd aria-hidden="true">N</kbd>
+        </button>
+        <nav id="desktop-nav" class="desktop-nav" aria-label="Workspace"></nav>
+        <div class="sidebar-footer">
+          <button class="sidebar-link" data-action="install">
+            <i class="ph ph-download-simple" aria-hidden="true"></i> Install app
+          </button>
+          <button class="sidebar-link" data-action="settings">
+            <i class="ph ph-gear" aria-hidden="true"></i> Settings
+          </button>
+        </div>
+      </aside>
+      <header class="mobile-header">
+        <a href="#today" class="brand" aria-label="Dayline home">
+          <img src="./icons/icon-192.png" width="32" height="32" alt="" />
+          <span>dayline<span class="brand-dot">.</span></span>
+        </a>
+        <div class="mobile-actions">
+          <button class="icon-button mobile-focus" data-action="resume-focus" aria-label="Return to focus timer" hidden>
+            <i class="ph ph-timer" aria-hidden="true"></i>
+          </button>
+          <button class="icon-button" data-action="search" aria-label="Search tasks">
+            <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+          </button>
+        </div>
+      </header>
+      <main id="main-content" tabindex="-1">
+        <div class="main-inner">
+          <div class="page-header">
+            <div id="page-heading"></div>
+            <div class="header-actions">
+              <button class="button focus-shortcut" data-action="resume-focus" hidden>
+                <i class="ph ph-timer" aria-hidden="true"></i>
+                <span class="focus-shortcut-time"></span>
+              </button>
+              <button class="search-button" data-action="search">
+                <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+                <span>Search tasks</span>
+                <kbd id="search-shortcut" aria-hidden="true"></kbd>
+              </button>
+            </div>
+          </div>
+          <div id="page-content"></div>
+        </div>
+      </main>
+      <nav id="mobile-nav" class="mobile-nav" aria-label="Workspace"></nav>
+    </div>
+    <dialog id="editor" class="dialog" aria-labelledby="editor-heading"></dialog>
+    <dialog id="search" class="dialog search-dialog" aria-labelledby="search-heading">
+      <div class="dialog-heading">
+        <h2 id="search-heading">Search tasks</h2>
+        <button class="icon-button" data-action="close" aria-label="Close search">
+          <i class="ph ph-x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <label class="search-field">
+        <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+        <input id="search-query" type="search" placeholder="Search by task or space" aria-label="Search by task or space" autocomplete="off" autofocus />
+      </label>
+      <div id="search-results"></div>
+    </dialog>
+    <dialog id="focus" class="dialog focus-dialog" aria-labelledby="focus-heading"></dialog>
+    <dialog id="settings" class="dialog" aria-labelledby="settings-heading"></dialog>
+    <dialog id="mobile-more" class="dialog mobile-more-dialog" aria-labelledby="more-heading"></dialog>
+    <dialog id="install" class="dialog" aria-labelledby="install-heading"></dialog>
+    <input id="backup-file" type="file" accept=".json,application/json" hidden />
+    <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+    <noscript><p class="noscript">Enable JavaScript to open Dayline.</p></noscript>
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>

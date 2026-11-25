@@ -1,0 +1,49 @@
+/* Phosphor Regular 2.1.2, subset to the icons used by Dayline. */
+@font-face {
+  font-family: "Phosphor UI";
+  src: url("./phosphor-ui.woff2") format("woff2");
+  font-display: block;
+}
+.ph {
+  font-family: "Phosphor UI";
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  line-height: 1;
+}
+.ph-arrow-clockwise::before { content: "\e036"; }
+.ph-arrow-counter-clockwise::before { content: "\e038"; }
+.ph-arrows-clockwise::before { content: "\e094"; }
+.ph-battery-medium::before { content: "\e0c6"; }
+.ph-briefcase::before { content: "\e0ee"; }
+.ph-broom::before { content: "\ec54"; }
+.ph-calendar-blank::before { content: "\e10a"; }
+.ph-caret-down::before { content: "\e136"; }
+.ph-caret-right::before { content: "\e13a"; }
+.ph-chart-line-up::before { content: "\e156"; }
+.ph-check::before { content: "\e182"; }
+.ph-check-circle::before { content: "\e184"; }
+.ph-clock::before { content: "\e19a"; }
+.ph-dots-three::before { content: "\e1fe"; }
+.ph-download-simple::before { content: "\e20c"; }
+.ph-feather::before { content: "\e9c0"; }
+.ph-flag::before { content: "\e244"; }
+.ph-gear::before { content: "\e270"; }
+.ph-house::before { content: "\e2c2"; }
+.ph-lightning::before { content: "\e2de"; }
+.ph-list-bullets::before { content: "\e2f2"; }
+.ph-magnifying-glass::before { content: "\e30c"; }
+.ph-minus-circle::before { content: "\e32c"; }
+.ph-pause::before { content: "\e39e"; }
+.ph-pencil-simple::before { content: "\e3b4"; }
+.ph-play::before { content: "\e3d0"; }
+.ph-plus::before { content: "\e3d4"; }
+.ph-sort-ascending::before { content: "\e444"; }
+.ph-sparkle::before { content: "\e6a2"; }
+.ph-sun::before { content: "\e472"; }
+.ph-sun-horizon::before { content: "\e5b6"; }
+.ph-timer::before { content: "\e492"; }
+.ph-trash::before { content: "\e4a6"; }
+.ph-tray::before { content: "\e4aa"; }
+.ph-upload-simple::before { content: "\e4c0"; }
+.ph-x::before { content: "\e4f6"; }
