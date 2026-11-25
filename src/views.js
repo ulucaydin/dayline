@@ -183,18 +183,16 @@ function hero(task, { today, energy, count, session, firstTask }) {
       ${recommendationReasons(task, today, energy).map((reason) => `<span class="hero-reason">${reason}</span>`).join('')}
     </div>
     ${step ? `<p class="hero-step"><strong>First step</strong> <span>${escape(step.title)}</span></p>` : ''}
+  </div>
     <div class="hero-actions">
-      <button class="button primary focus-button" data-action="focus" data-id="${escape(task.id)}">${icon('play')} ${sameSession ? 'Open focus' : 'Start focus'}</button>
+      <button class="button focus-button" data-action="focus" data-id="${escape(task.id)}">${icon('play')} ${sameSession ? 'Open focus' : 'Start focus'}</button>
       ${count > 1 ? `<button class="button quiet another-button" data-action="another">${icon('arrows-clockwise')} Try another</button>` : ''}
-    </div>
-  </div>` : '';
-  return `<section class="hero${task ? '' : ' hero-empty'}" aria-label="Voice capture${task ? ' and suggested task' : ''}">
+    </div>` : '';
+  return `<section class="hero${task ? '' : ' hero-empty'}${firstTask ? ' hero-first' : ''}" aria-label="Voice capture${task ? ' and suggested task' : ''}">
+    ${voiceCapture()}
+    ${content}
+    ${firstTask ? `<button class="text-button show-examples" data-action="show-examples">Try example tasks</button>` : ''}
     <div class="hero-art" aria-hidden="true"><img src="./assets/focus-tiles.webp" alt="" width="216" height="203" fetchpriority="high" /></div>
-    <div class="hero-content">
-      ${voiceCapture()}
-      ${content}
-      ${firstTask ? `<button class="text-button show-examples" data-action="show-examples">Try example tasks</button>` : ''}
-    </div>
   </section>`;
 }
 
