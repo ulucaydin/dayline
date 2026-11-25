@@ -1,6 +1,6 @@
 import { encodeWave, recordVoice } from './voice-audio.js';
-import { maxRecordingSeconds } from './voice-providers.js';
-import { maxVoiceText } from './voice-tasks.js';
+import { longRecordingTimeout, shortWaveBytes } from './voice-providers.js';
+import { maxVoiceText, shortVoiceText } from './voice-tasks.js';
 import { interpretVoice } from './capture-api.js';
 
 const noSpeech = 'I didn’t hear a request. Tap the mic to try again.';
@@ -32,6 +32,7 @@ async function availableNativeRecognition({ signal, progress }) {
     const recognition = new Recognition();
     recognition.lang = language;
     recognition.processLocally = true;
+    recognition.continuous = true;
     recognition.interimResults = true;
     return recognition;
   } catch {
@@ -40,46 +41,84 @@ async function availableNativeRecognition({ signal, progress }) {
   }
 }
 
-function listenOnDevice(recognition, { signal, setStop, progress }) {
-  let text = '';
+function listenOnDevice(recognition, { signal, setStop, progress, recordingSeconds }) {
   return new Promise((resolve, reject) => {
-    let timer;
-    let fallback = false;
+    const parts = [];
+    let text = '';
+    let limitTimer;
+    let restartTimer;
+    let finishTimer;
+    let running = false;
+    let finishing = false;
     const settle = () => {
-      clearTimeout(timer);
+      clearTimeout(limitTimer);
+      clearTimeout(restartTimer);
+      clearTimeout(finishTimer);
+      recognition.onend = recognition.onerror = recognition.onresult = null;
       signal.removeEventListener('abort', cancel);
       setStop(null);
+    };
+    const complete = () => {
+      settle();
+      resolve([...parts, text].join(' '));
     };
     const cancel = () => {
       settle();
       reject(signal.reason);
-      recognition.abort();
+      if (running) recognition.abort();
     };
     const stop = () => {
-      if (!signal.aborted) recognition.stop();
+      finishing = true;
+      clearTimeout(limitTimer);
+      setStop(null);
+      if (!running) return complete();
+      try {
+        finishTimer = setTimeout(() => {
+          complete();
+          recognition.abort();
+        }, 3_000);
+        recognition.stop();
+      } catch {
+        complete();
+      }
     };
     recognition.onresult = ({ results }) => {
       text = Array.from(results, (result) => result[0]?.transcript ?? '').join(' ');
     };
     recognition.onerror = ({ error }) => {
-      if (['language-not-supported', 'language-unavailable', 'service-not-allowed'].includes(error)) {
-        fallback = true;
-        return;
-      }
       if (error === 'no-speech') return;
       settle();
+      if (!finishing && !parts.length && !text && ['language-not-supported', 'language-unavailable', 'service-not-allowed'].includes(error)) {
+        resolve(null);
+        return;
+      }
       const message = error === 'not-allowed' ? 'Allow microphone access, then tap the mic again.' : 'Device dictation couldn’t start. Try again.';
       reject(new Error(message));
     };
     recognition.onend = () => {
-      settle();
-      resolve(fallback ? null : text);
+      running = false;
+      if (finishing) return complete();
+      if (text.trim()) parts.push(text.trim());
+      text = '';
+      restartTimer = setTimeout(() => {
+        try {
+          recognition.start();
+          running = true;
+        } catch {
+          settle();
+          reject(new Error('Device dictation stopped. Tap the mic to try again.'));
+        }
+      }, 150);
     };
     signal.addEventListener('abort', cancel, { once: true });
     try {
       recognition.start();
+      running = true;
       setStop(stop);
-      timer = setTimeout(stop, maxRecordingSeconds * 1000);
+      limitTimer = setTimeout(() => {
+        progress('working', 'Time limit reached. Finishing recording…');
+        stop();
+      }, recordingSeconds * 1000);
       progress('listening', 'Listening. Tap when you’re done.');
     } catch {
       settle();
@@ -125,13 +164,13 @@ function runLocalModel(samples, { signal, progress }) {
   });
 }
 
-async function cloudVoice(provider, body, signal) {
+async function cloudVoice(provider, body, signal, timeout = 12_000) {
   const url = speechEndpoint();
   url.searchParams.set('provider', provider);
   const response = await fetch(url, {
     method: 'POST',
     cache: 'no-store',
-    signal: AbortSignal.any([signal, AbortSignal.timeout(12_000)]),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]),
     body,
   });
   if (!response.ok) throw new Error('Cloud dictation is unavailable.');
@@ -158,6 +197,7 @@ async function dictate({ provider, intakeProvider, date, selected, signal, progr
     const samples = await recordVoice({ signal, progress, ...options });
     if (!samples.length) throw new Error(noSpeech);
     let body = encodeWave(samples);
+    const timeout = body.size > shortWaveBytes ? longRecordingTimeout + 5_000 : undefined;
     const combined = transcriber === intakeProvider;
     if (combined) {
       const recording = new FormData();
@@ -169,7 +209,7 @@ async function dictate({ provider, intakeProvider, date, selected, signal, progr
     }
     progress('working', combined ? 'Listening finished. Understanding your request…' : 'Transcribing…');
     try {
-      return { ...await cloudVoice(transcriber, body, signal), combined };
+      return { ...await cloudVoice(transcriber, body, signal, timeout), combined };
     } catch {
       signal.throwIfAborted();
       const text = tidyDictation(await runLocalModel(samples, { signal, progress }));
@@ -184,7 +224,7 @@ async function dictate({ provider, intakeProvider, date, selected, signal, progr
   if (transcriber === 'opus') {
     progress('working', 'Checking the transcript…');
     try {
-      return await cloudVoice('opus', text, signal);
+      return await cloudVoice('opus', text, signal, text.length > shortVoiceText ? longRecordingTimeout + 5_000 : undefined);
     } catch {
       signal.throwIfAborted();
     }

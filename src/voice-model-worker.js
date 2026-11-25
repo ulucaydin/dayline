@@ -39,7 +39,9 @@ self.addEventListener('message', async ({ data: samples }) => {
       model = await loadModel();
     }
     self.postMessage({ phase: 'transcribing' });
-    const result = await model(samples, { return_timestamps: false, max_new_tokens: 120 });
+    const result = await model(samples, {
+      chunk_length_s: 30, stride_length_s: 4, return_timestamps: false, max_new_tokens: 200,
+    });
     self.postMessage({ text: result.text });
   } catch {
     const error = self.navigator.onLine

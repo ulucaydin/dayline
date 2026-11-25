@@ -1,7 +1,8 @@
 import { dateValue, parseCapture } from './tasks.js';
 
 export const maxVoiceActions = 8;
-export const maxVoiceText = 1_200;
+export const shortVoiceText = 1_200;
+export const maxVoiceText = 8_000;
 
 const taskVerbs = 'add(?!\\s+(?:(?:a|the)\\s+)?(?:notes?|steps?)\\b)|book|buy|call|check|create|draft|email|finish|fix|get|order|pay|pick|prepare|read|remind|review|schedule|send|submit|write';
 const ownAction = /^(?:(?:add|create)\s+(?:a\s+)?(?:new\s+)?task(?:\s+(?:to|called|named|for))?|(?:also\s+)?remind\s+me\s+to|I\s+(?:need|want)\s+to)\b[\s,:-]*/i;

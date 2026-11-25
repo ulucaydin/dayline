@@ -1,4 +1,4 @@
-import { intakeProviders, voiceProviders } from './voice-providers.js';
+import { defaultRecordingMinutes, intakeProviders, recordingMinuteOptions, voiceProviders } from './voice-providers.js';
 
 export const spaces = {
   inbox: { label: 'Inbox', icon: 'tray' },
@@ -316,6 +316,7 @@ export function readState() {
       focusMinutes: [5, 10, 15, 25].includes(raw.focusMinutes) ? raw.focusMinutes : 15,
       voiceProvider: Object.hasOwn(voiceProviders, raw.voiceProvider) ? raw.voiceProvider : 'device',
       intakeProvider: Object.hasOwn(intakeProviders, raw.intakeProvider) ? raw.intakeProvider : 'device',
+      recordingMinutes: recordingMinuteOptions.includes(raw.recordingMinutes) ? raw.recordingMinutes : defaultRecordingMinutes,
       session: normalizeSession(raw.session, tasks),
       sync: Number.isSafeInteger(sync?.cursor) && Array.isArray(sync.versions) && Array.isArray(sync.pending) ? sync : null,
     };
@@ -344,6 +345,7 @@ export function initialState() {
     focusMinutes: 15,
     voiceProvider: 'device',
     intakeProvider: 'device',
+    recordingMinutes: defaultRecordingMinutes,
     session: null,
     sync: null,
   };

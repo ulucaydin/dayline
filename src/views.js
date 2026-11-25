@@ -1,7 +1,7 @@
 import {
   dateDistance, dateText, daysFrom, localDate, nextDate, orderTasks, recommendationReasons, spaces,
 } from './tasks.js';
-import { intakeProviders, voiceProviders } from './voice-providers.js';
+import { intakeProviders, recordingMinuteOptions, voiceProviders } from './voice-providers.js';
 
 const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const scheduleLookahead = 7;
@@ -448,6 +448,10 @@ export function settingsContent(state, shortcut, syncMessage) {
       <div class="capture-choices">
         ${providerSelect('voice-provider', 'Transcriber', voiceProviders, state.voiceProvider)}
         ${providerSelect('intake-provider', 'Task interpretation', intakeProviders, state.intakeProvider)}
+        <div class="field"><label for="recording-limit">Maximum recording time</label>
+          <select id="recording-limit">${recordingMinuteOptions.map((minutes) =>
+            `<option value="${minutes}"${minutes === state.recordingMinutes ? ' selected' : ''}>${minutes} ${minutes === 1 ? 'minute' : 'minutes'}</option>`).join('')}</select>
+        </div>
       </div>
       <details class="provider-keys">
         <summary>${icon('caret-right')} API keys</summary>

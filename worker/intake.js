@@ -1,5 +1,5 @@
 import { dateValue, parseCapture } from '../src/tasks.js';
-import { maxCaptureLength } from '../src/voice-providers.js';
+import { longRecordingTimeout, maxCaptureLength, shortWaveBytes } from '../src/voice-providers.js';
 import { maxVoiceActions, maxVoiceText, normalizeVoiceActions } from '../src/voice-tasks.js';
 import { base64, geminiText, json, models, providerRequest, readJson, sameOrigin } from './provider-api.js';
 import { captureKey } from './provider-keys.js';
@@ -108,7 +108,7 @@ function normalizeTaskDraft(draft) {
   return fields;
 }
 
-async function openaiRecording(audio, input, key, signal, { prompt = recordingInstructions, format = recordingSchema, tokens = 560 } = {}) {
+async function openaiRecording(audio, input, key, signal, { prompt = recordingInstructions, format = recordingSchema, tokens = 560, timeout } = {}) {
   const functionName = 'describe_task_recording';
   const result = await providerRequest(
     'https://api.openai.com/v1/chat/completions',
@@ -127,7 +127,7 @@ async function openaiRecording(audio, input, key, signal, { prompt = recordingIn
       tool_choice: { type: 'function', function: { name: functionName } },
       max_completion_tokens: tokens,
       store: false,
-    }), signal,
+    }), signal, timeout,
   );
   return result.choices?.[0]?.message?.tool_calls
     ?.find((call) => call.type === 'function' && call.function?.name === functionName)?.function.arguments;
@@ -137,13 +137,16 @@ export async function interpretRecording(provider, { audio, date, prefix, voice,
   const context = voice ? { has_selected_task: selected } : { existing_draft: prefix };
   const input = JSON.stringify({ local_date: date, ...context });
   const encoded = base64(audio);
-  const answer = provider === 'openai' ? await openaiRecording(encoded, input, key, signal, voice ? voiceRecording : undefined) : await geminiText({
+  const longer = audio.length > shortWaveBytes;
+  const timeout = longer ? longRecordingTimeout : undefined;
+  const options = voice ? { ...voiceRecording, ...(longer && { tokens: 6_000 }), timeout } : { timeout };
+  const answer = provider === 'openai' ? await openaiRecording(encoded, input, key, signal, options) : await geminiText({
     model: models.gemini.parser,
     system_instruction: voice ? voiceRecording.prompt : recordingInstructions,
     input: [{ type: 'text', text: input }, { type: 'audio', mime_type: 'audio/wav', data: encoded }],
     response_format: { type: 'text', mime_type: 'application/json', schema: voice ? voiceRecording.format : recordingSchema },
-    generation_config: { thinking_level: 'low', max_output_tokens: voice ? 2_000 : 1_536 },
-  }, key, signal);
+    generation_config: { thinking_level: 'low', max_output_tokens: voice ? (longer ? 6_000 : 2_000) : 1_536 },
+  }, key, signal, timeout);
   const result = JSON.parse(answer);
   const text = typeof result?.transcript === 'string' ? result.transcript.trim().slice(0, voice ? maxVoiceText : 550) : '';
   if (voice) return { text, actions: text ? normalizeVoiceActions(result.actions, selected) : null };
@@ -157,7 +160,7 @@ export async function handleIntake(request, env) {
   if (!owner) return json({ error: 'Sign-in required.' }, 401);
   if (request.method !== 'POST') return json({ error: 'Use POST.' }, 405);
   if (!sameOrigin(request)) return json({ error: 'Use this Dayline origin.' }, 403);
-  const data = await readJson(request, 8_000);
+  const data = await readJson(request, maxVoiceText * 6 + 256);
   const { provider, date, text, mode, selected } = data ?? {};
   const voice = mode === 'voice';
   if (!Object.hasOwn(models, provider) || !dateValue(date) || typeof text !== 'string' || !text.trim()

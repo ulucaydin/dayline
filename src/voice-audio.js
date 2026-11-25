@@ -1,45 +1,10 @@
-import { maxRecordingSeconds, sampleRate, waveHeaderBytes } from './voice-providers.js';
+import { sampleRate, waveHeaderBytes } from './voice-providers.js';
 
 export function releaseMicrophone(stream) {
   stream.getTracks().forEach((track) => track.stop());
 }
 
-function listenForSilence(stream, stop) {
-  const AudioContext = globalThis.AudioContext ?? globalThis.webkitAudioContext;
-  if (!AudioContext) return () => {};
-  let context;
-  try {
-    context = new AudioContext();
-    const source = context.createMediaStreamSource(stream);
-    const meter = context.createAnalyser();
-    meter.fftSize = 1024;
-    source.connect(meter);
-    void context.resume().catch(() => {});
-    const samples = new Float32Array(meter.fftSize);
-    const start = performance.now();
-    let lastSpeech;
-    const interval = setInterval(() => {
-      if (context.state !== 'running') return;
-      meter.getFloatTimeDomainData(samples);
-      let energy = 0;
-      for (const sample of samples) energy += sample * sample;
-      const now = performance.now();
-      if (energy / samples.length > 0.00018) lastSpeech = now;
-      if (lastSpeech === undefined && now - start >= 8_000) stop(true);
-      else if (lastSpeech !== undefined && now - lastSpeech >= 1_500) stop();
-    }, 75);
-    return () => {
-      clearInterval(interval);
-      source.disconnect();
-      void context.close().catch(() => {});
-    };
-  } catch {
-    if (context) void context.close().catch(() => {});
-    return () => {};
-  }
-}
-
-export async function recordVoice({ signal, setStop, progress }) {
+export async function recordVoice({ signal, setStop, progress, recordingSeconds }) {
   if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder || !globalThis.OfflineAudioContext) {
     throw new Error('To use the microphone, open Dayline in a browser with voice access.');
   }
@@ -51,18 +16,16 @@ export async function recordVoice({ signal, setStop, progress }) {
       const recorder = new MediaRecorder(stream, { audioBitsPerSecond: 48_000 });
       const chunks = [];
       let timeout;
-      let stopMeter;
-      let silent = false;
+      let finishing = false;
 
-      const stop = (noSpeech = false) => {
-        silent ||= noSpeech;
-        stopMeter?.();
-        stopMeter = null;
+      const stop = () => {
+        finishing = true;
+        clearTimeout(timeout);
+        setStop(null);
         if (recorder.state !== 'inactive') recorder.stop();
         releaseMicrophone(stream);
       };
       const cleanup = () => {
-        stopMeter?.();
         clearTimeout(timeout);
         signal.removeEventListener('abort', cancel);
         setStop(null);
@@ -77,7 +40,8 @@ export async function recordVoice({ signal, setStop, progress }) {
       };
       recorder.onstop = () => {
         cleanup();
-        resolve(new Blob(silent ? [] : chunks, { type: recorder.mimeType }));
+        if (finishing) resolve(new Blob(chunks, { type: recorder.mimeType }));
+        else reject(new Error('The microphone disconnected. Tap to start again.'));
       };
       recorder.onerror = (event) => {
         stop();
@@ -94,8 +58,10 @@ export async function recordVoice({ signal, setStop, progress }) {
         return;
       }
       setStop(stop);
-      timeout = setTimeout(stop, maxRecordingSeconds * 1000);
-      stopMeter = listenForSilence(stream, stop);
+      timeout = setTimeout(() => {
+        progress('working', 'Time limit reached. Finishing recording…');
+        stop();
+      }, recordingSeconds * 1000);
       progress('listening', 'Listening. Tap when you’re done.');
     });
 
@@ -103,14 +69,16 @@ export async function recordVoice({ signal, setStop, progress }) {
     if (!recording.size) return new Float32Array();
     const decoder = new OfflineAudioContext(1, 1, sampleRate);
     const decoded = await decoder.decodeAudioData(await recording.arrayBuffer());
-    const length = Math.min(decoded.length, sampleRate * maxRecordingSeconds);
-    if (decoded.numberOfChannels === 1) return decoded.getChannelData(0).slice(0, length);
-    const mono = new Float32Array(length);
-    for (let channel = 0; channel < decoded.numberOfChannels; channel += 1) {
-      const data = decoded.getChannelData(channel);
-      for (let i = 0; i < length; i += 1) mono[i] += data[i] / decoded.numberOfChannels;
+    const length = Math.min(decoded.length, sampleRate * recordingSeconds);
+    const mono = decoded.getChannelData(0).slice(0, length);
+    if (decoded.numberOfChannels > 1) {
+      for (let channel = 1; channel < decoded.numberOfChannels; channel += 1) {
+        const data = decoded.getChannelData(channel);
+        for (let i = 0; i < length; i += 1) mono[i] += data[i];
+      }
+      for (let i = 0; i < length; i += 1) mono[i] /= decoded.numberOfChannels;
     }
-    return mono;
+    return mono.some((sample) => Math.abs(sample) > 0.002) ? mono : new Float32Array();
   } finally {
     releaseMicrophone(stream);
   }

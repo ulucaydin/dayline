@@ -3,7 +3,7 @@ import './icons.css';
 import './style.css';
 import { getCaptureAvailability, updateCaptureKey } from './capture-api.js';
 import { createVoiceControls } from './dictation.js';
-import { intakeProviders, voiceProviders } from './voice-providers.js';
+import { intakeProviders, recordingMinuteOptions, voiceProviders } from './voice-providers.js';
 import {
   initialState, isToday, isWorkspaceChange, localDate, makeBackup, makeTask, mergeTasks,
   newId, orderTasks, parseBackup, readState, sampleTasks, saveState,
@@ -57,6 +57,7 @@ let lastVoiceTask;
 const voice = createVoiceControls(() => ({
   provider: captureAvailability?.providers?.[state.voiceProvider] === false ? 'device' : state.voiceProvider,
   intakeProvider: captureAvailability?.providers?.[state.intakeProvider] === false ? 'device' : state.intakeProvider,
+  recordingSeconds: state.recordingMinutes * 60,
   date: today,
 }), finishVoice);
 
@@ -736,6 +737,9 @@ document.addEventListener('change', (event) => {
   } else if (target.id === 'intake-provider') {
     commit((current) => ({ ...current, intakeProvider: target.value }));
     paintCaptureSettings();
+  } else if (target.id === 'recording-limit') {
+    const recordingMinutes = Number(target.value);
+    if (recordingMinuteOptions.includes(recordingMinutes)) commit((current) => ({ ...current, recordingMinutes }));
   } else if (target.id === 'default-length') {
     commit((current) => ({ ...current, focusMinutes: Number(target.value) }));
   } else if (target.id === 'timer-length') {
@@ -864,8 +868,8 @@ window.addEventListener('appinstalled', () => {
 });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) tick();
-  else voice.cancel();
 });
+window.addEventListener('pagehide', () => voice.cancel());
 
 renderWorkspace();
 if (import.meta.env.PROD) {

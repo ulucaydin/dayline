@@ -13,6 +13,9 @@ export const intakeProviders = {
 
 export const maxCaptureLength = 220;
 export const sampleRate = 16_000;
-export const maxRecordingSeconds = 30;
+export const defaultRecordingMinutes = 5;
+export const recordingMinuteOptions = [1, 2, 3, 4, 5, 6, 7];
 export const waveHeaderBytes = 44;
-export const maxWaveBytes = waveHeaderBytes + maxRecordingSeconds * sampleRate * 2;
+export const shortWaveBytes = waveHeaderBytes + 30 * sampleRate * 2;
+export const maxWaveBytes = waveHeaderBytes + recordingMinuteOptions.at(-1) * 60 * sampleRate * 2;
+export const longRecordingTimeout = 60_000;
