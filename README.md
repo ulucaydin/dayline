@@ -4,6 +4,16 @@
 
 Dayline is an installable, offline-capable task planner for choosing one next step across work and personal life.
 
+## Voice in action
+
+**Add several tasks at once.** Tap **Talk to Dayline** and say “Call the dentist tomorrow and send the project recap by Friday for work.” Dayline adds both tasks and shows the dates and spaces it captured below the mic.
+
+![Dayline’s Today view showing two tasks added from one voice request, with tomorrow’s dentist call in Inbox and Friday’s project recap in Work.](docs/voice-capture.png)
+
+**Update a task by voice.** Tap the project recap’s mic and say “Move it to next Tuesday and make it high priority.” The task shows the new date and priority, with **Undo** available.
+
+<img src="docs/voice-update.png" width="520" alt="The project recap is now high priority and due December 1. An Undo button appears with the update confirmation." />
+
 ## Start here
 
 - Tap **Talk to Dayline**, choose **Speak** from navigation, or press **N**. Say “Call the dentist tomorrow and send the recap by Friday for work.” Dayline saves the tasks when you finish speaking. Tap **Finish recording** to stop immediately.
