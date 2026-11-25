@@ -42,6 +42,29 @@ Open Dayline on the device you want to use and choose **Install app**. In Chrome
 
 Sign in to the published Dayline site with the same account on each device. Dayline syncs tasks automatically, including earlier tasks on a device when you next open it online. The app can reopen offline after its first successful load. Offline changes sync when you reconnect. **Settings → Export tasks** keeps a portable backup.
 
+### Sync architecture
+
+```mermaid
+flowchart TD
+    subgraph Devices["Your devices · same Dayline account"]
+        desktop["Mac or Windows<br/>Local tasks and queued edits"]
+        android["Android<br/>Local tasks and queued edits"]
+    end
+
+    subgraph Cloud["Hosted Dayline · Cloudflare"]
+        worker["Dayline Worker<br/>POST /api/task-sync<br/>Account verified by Sites sign-in"]
+        db[("Cloudflare D1<br/>Tasks and revisions by account")]
+        worker <-->|"Server-side D1 binding (env.DB)"| db
+    end
+
+    desktop <-->|"HTTPS sync"| worker
+    android <-->|"HTTPS sync"| worker
+```
+
+- **On each device**, browser storage (`localStorage`) keeps a task copy and queues edits made offline. The current focus timer, focus preferences, and speech provider choices stay on that device.
+- **When online**, the browser sends queued task edits to `POST /api/task-sync` and receives records newer than its last synced revision. The Worker uses Sites sign-in to identify the account and reads and writes Cloudflare D1 through its server-side `env.DB` binding. Other devices pick up the changes on their next sync. [Browser sync](src/task-sync.js) · [Worker endpoint](worker/task-sync.js)
+- **Optional provider keys** are stored separately in D1 as encrypted records for the signed-in account. [Provider key storage](worker/provider-keys.js)
+
 ## Android APK
 
 The Dayline APK adds a launcher icon and opens the existing workspace in an Android browser Custom Tab. Use the same ChatGPT account to sync tasks. Open the downloaded file on your phone to install it. [Pixel installation instructions](https://support.google.com/pixelphone/answer/7391672)
