@@ -1,5 +1,7 @@
 # Dayline
 
+![Dayline — Speak it. See it. Get it done. A voice waveform leads to a stack of green checkmark tiles.](docs/dayline-banner.jpg)
+
 Dayline is an installable, offline-capable task planner for choosing one next step across work and personal life.
 
 ## Start here
