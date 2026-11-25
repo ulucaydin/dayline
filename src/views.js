@@ -1,9 +1,11 @@
 import {
-  dateText, isToday, localDate, nextDate, orderTasks, recommendationReasons, spaces,
+  dateDistance, dateText, daysFrom, localDate, nextDate, orderTasks, recommendationReasons, spaces,
 } from './tasks.js';
 import { intakeProviders, voiceProviders } from './voice-providers.js';
 
 const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const scheduleLookahead = 7;
+const scheduleDateFormat = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 export const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (character) => entities[character]);
 
 export const icon = (name) => `<i class="ph ph-${name}" aria-hidden="true"></i>`;
@@ -66,33 +68,37 @@ function scheduleBadge(task, today, view) {
     const date = localDate(new Date(task.completedAt));
     return `<span class="date-chip">${dateText(date, today)}</span>`;
   }
+  const timing = (date) => dateText(date, today).replace(/^(Today|Tomorrow|Yesterday)$/, (label) => label.toLowerCase());
+  const planned = view === 'schedule' && task.plan && (!task.due || task.plan < task.due)
+    ? `<time class="date-chip" datetime="${task.plan}">${icon('calendar-blank')}Planned ${timing(task.plan)}</time>`
+    : '';
   if (task.due) {
     const urgent = task.due <= today ? ' due-soon' : '';
-    const date = dateText(task.due, today);
-    const due = date === 'Today' || date === 'Tomorrow' ? date.toLowerCase() : date;
-    const label = task.due < today ? 'Overdue' : `Due ${due}`;
-    return `<span class="date-chip${urgent}" title="Due ${escape(task.due)}">${icon('calendar-blank')}${label}</span>`;
+    const label = task.due < today ? 'Overdue' : `Due ${timing(task.due)}`;
+    return `${planned}<time class="date-chip${urgent}" datetime="${task.due}" title="Due ${escape(task.due)}">${icon('calendar-blank')}${label}</time>`;
   }
+  if (planned) return planned;
   if (task.plan && view !== 'today') {
     return `<span class="date-chip">${icon('calendar-blank')}${dateText(task.plan, today)}</span>`;
   }
   return '';
 }
 
-export function taskList(tasks, { today, view }) {
-  return `<ul class="task-list" aria-label="Tasks">${tasks.map((task) => {
+export function taskList(tasks, { today, view, label = 'Tasks' }) {
+  return `<ul class="task-list" aria-label="${escape(label)}">${tasks.map((task) => {
     const id = escape(task.id);
     const title = escape(task.title);
     const checkText = task.completedAt ? 'Reopen' : 'Complete';
-    const details = (action, label, symbol, extra = '') =>
-      `<button class="menu-item${extra}" data-action="${action}" data-id="${id}">${icon(symbol)} ${label}</button>`;
+    const details = (action, text, symbol, extra = '') =>
+      `<button class="menu-item${extra}" data-action="${action}" data-id="${id}">${icon(symbol)} ${text}</button>`;
     const planAction = task.plan && task.plan <= today
       ? details('unplan', 'Remove from today’s plan', 'minus-circle')
       : details('plan', 'Plan for today', 'sun');
     const highFlag = task.priority === 'high' && !task.completedAt
       ? `<span class="priority-label">${icon('flag')} High priority</span>`
       : '';
-    return `<li class="task-row${task.completedAt ? ' is-complete' : ''}">
+    const overdue = view === 'schedule' && task.due && task.due < today;
+    return `<li class="task-row${task.completedAt ? ' is-complete' : ''}${overdue ? ' is-overdue' : ''}">
       <label class="task-check">
         <input type="checkbox" data-action="check" data-id="${id}" aria-label="${checkText} ${title}"${task.completedAt ? ' checked' : ''} />
         <span class="check-circle" aria-hidden="true">${icon('check')}</span>
@@ -125,14 +131,14 @@ function filters(activeSpace, sort) {
     ['all', 'All tasks'], ['work', 'Work'], ['personal', 'Personal'],
   ].map(([value, label]) => `<button data-action="filter" data-value="${value}" aria-pressed="${value === activeSpace}">
     ${value !== 'all' ? `<span class="filter-dot ${value}" aria-hidden="true"></span>` : ''}${label}</button>`).join('');
-  return `<div class="task-toolbar"><div class="filters" role="group" aria-label="Filter by space">${filterButtons}</div>${sortControl(sort)}</div>`;
+  return `<div class="task-toolbar"><div class="filters" role="group" aria-label="Filter by space">${filterButtons}</div>${sortControl(sort, 'Sort tasks within each day')}</div>`;
 }
 
-function sortControl(sort) {
+function sortControl(sort, label = 'Sort tasks') {
   const options = { smart: 'Smart sort', date: 'Due date', quick: 'Shortest first', newest: 'Newest first' };
   return `<label class="sort-control">
     ${icon(sort === 'smart' ? 'sparkle' : 'sort-ascending')}
-    <select id="sort-by" aria-label="Sort tasks">
+    <select id="sort-by" aria-label="${label}">
       ${Object.entries(options).map(([value, label]) => `<option value="${value}"${sort === value ? ' selected' : ''}>${label}</option>`).join('')}
     </select>
     ${icon('caret-down')}
@@ -141,7 +147,7 @@ function sortControl(sort) {
 
 function emptyState(view, activeSpace = 'all') {
   const titles = {
-    today: activeSpace === 'all' ? 'You’re clear for today' : `No ${spaces[activeSpace].label.toLowerCase()} tasks today`,
+    today: activeSpace === 'all' ? 'Nothing scheduled' : `No ${spaces[activeSpace].label.toLowerCase()} tasks scheduled`,
     inbox: 'Your inbox is clear',
     upcoming: 'Nothing scheduled yet',
     completed: 'No completed tasks yet',
@@ -149,7 +155,7 @@ function emptyState(view, activeSpace = 'all') {
     personal: 'No open personal tasks',
   };
   const descriptions = {
-    today: 'Add a task or plan one from a space.',
+    today: 'Say what you need to do and when.',
     inbox: 'Quickly capture a task and sort it later.',
     upcoming: 'Give a task a future date to see it here.',
     completed: 'Check off any task to see it here.',
@@ -238,24 +244,42 @@ function energyCard(energy) {
   </section>`;
 }
 
+function scheduleDay(tasks, offset, { today, energy, sort }) {
+  const date = daysFrom(today, offset);
+  const label = offset < 2 ? dateText(date, today) : scheduleDateFormat.format(new Date(`${date}T12:00:00`));
+  return `<div class="schedule-day" style="--schedule-strength: ${100 - offset * 12}%">
+    <h3><time datetime="${date}">${escape(label)}</time></h3>
+    ${taskList(orderTasks(tasks, { today, energy, sort }), { today, view: 'schedule', label: `Tasks for ${label}` })}
+  </div>`;
+}
+
 export function todayPage(state, { today, activeSpace, sort, suggestionId, expanded }) {
   if (state.tasks.length === 0) return hero(null, { firstTask: true });
-  const todayTasks = state.tasks.filter((task) => !task.completedAt && isToday(task, today));
+  const schedule = Array.from({ length: scheduleLookahead + 1 }, () => []);
+  for (const task of state.tasks) {
+    const date = nextDate(task);
+    if (!task.completedAt && date) {
+      const offset = Math.max(0, dateDistance(today, date));
+      if (offset <= scheduleLookahead) schedule[offset].push(task);
+    }
+  }
   const allDone = state.tasks.filter((task) => task.completedAt && localDate(new Date(task.completedAt)) === today);
   const matches = (task) => activeSpace === 'all' || task.space === activeSpace;
   const done = allDone.filter(matches).sort((a, b) => b.completedAt - a.completedAt);
-  const open = todayTasks.filter(matches);
-  const suggestionQueue = orderTasks(open, { today, energy: state.energy });
+  const visible = schedule.map((tasks) => tasks.filter(matches));
+  const count = visible.reduce((total, tasks) => total + tasks.length, 0);
+  const suggestionQueue = orderTasks(visible[0], { today, energy: state.energy });
   const suggestion = suggestionQueue.find((task) => task.id === suggestionId) ?? suggestionQueue[0];
-  const visible = orderTasks(open, { today, energy: state.energy, sort });
+  const taskDays = visible.map((tasks, offset) => tasks.length
+    ? scheduleDay(tasks, offset, { today, energy: state.energy, sort }) : '').join('');
   return `<div class="dashboard-grid">
     <div class="dashboard-main">
       ${hero(suggestion, { today, energy: state.energy, count: suggestionQueue.length, session: state.session })}
       <section class="task-section" aria-labelledby="task-heading">
-        <div class="section-title"><h2 id="task-heading">Today’s tasks</h2><span class="count-pill">${visible.length}</span></div>
+        <div class="section-title"><h2 id="task-heading">Today &amp; next 7 days</h2><span class="count-pill">${count}</span></div>
         ${filters(activeSpace, sort)}
         <div class="task-panel">
-          ${visible.length ? taskList(visible, { today, view: 'today' }) : emptyState('today', activeSpace)}
+          ${taskDays || emptyState('today', activeSpace)}
           ${listFooter(state.tasks.some((task) => task.sample))}
         </div>
         ${done.length ? `<details class="completed-today"${expanded ? ' open' : ''}>
@@ -265,7 +289,7 @@ export function todayPage(state, { today, activeSpace, sort, suggestionId, expan
       </section>
     </div>
     <aside class="dashboard-side" aria-label="Today’s tools">
-      ${progress(allDone.length, todayTasks.length)}
+      ${progress(allDone.length, schedule[0].length)}
       ${energyCard(state.energy)}
     </aside>
   </div>`;

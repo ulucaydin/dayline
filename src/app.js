@@ -391,7 +391,8 @@ function applyVoiceActions(commands, context) {
       }
       if (command.kind === 'create') {
         const { complete, ...fields } = command.fields;
-        const task = voiceTaskFields(makeTask({ space: context.space ?? 'inbox', plan: context.plan ?? '' }), fields);
+        const plan = fields.due && fields.due > today ? '' : context.plan ?? '';
+        const task = voiceTaskFields(makeTask({ space: context.space ?? 'inbox', plan }), fields);
         tasks.set(task.id, task);
         changes.set(task.id, { before: null, after: task });
         recent = task.id;

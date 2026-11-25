@@ -586,6 +586,27 @@ main { margin-left: var(--rail); }
 .task-row + .task-row { border-top: 1px solid #edf0ec; }
 .task-row:hover { background: #fafcf9; }
 .task-row:has(.task-menu[open]) { z-index: 3; }
+.schedule-day {
+  --schedule-accent: color-mix(in srgb, #185e49 var(--schedule-strength), #cadbd0);
+}
+.schedule-day + .schedule-day { border-top: 1px solid var(--line); }
+.schedule-day h3 {
+  padding: 7px 12px;
+  color: var(--muted-strong);
+  font-size: 12.5px;
+  font-weight: 740;
+  line-height: 1.4;
+}
+.schedule-day .task-row {
+  --row-accent: var(--schedule-accent);
+  padding-inline-start: 12px;
+  border-radius: 0;
+  background-color: color-mix(in srgb, var(--row-accent) 10%, var(--surface));
+  box-shadow: inset 4px 0 var(--row-accent);
+}
+.schedule-day .task-row.is-overdue { --row-accent: #103b2e; }
+.schedule-day .task-row:hover { background-color: color-mix(in srgb, var(--row-accent) 15%, var(--surface)); }
+.schedule-day:last-child .task-row:last-child { border-radius: 0 0 13px 13px; }
 .task-check {
   position: relative;
   display: grid;
@@ -988,6 +1009,7 @@ summary::-webkit-details-marker { display: none; }
   .sort-control i { left: 6px; font-size: 14px; }
   .sort-control i:last-child { right: 5px; }
   .task-row { min-height: 71px; padding-inline: 3px; gap: 4px; }
+  .schedule-day .task-row { padding-inline-start: 6px; }
   .task-title { font-size: 14px; padding-block: 4px; margin-block: -4px; }
   .task-meta { gap: 4px 6px; }
   .priority-label { font-size: 0; }
