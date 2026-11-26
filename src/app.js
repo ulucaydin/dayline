@@ -6,14 +6,14 @@ import { createVoiceControls } from './dictation.js';
 import { intakeProviders, recordingMinuteOptions, voiceProviders } from './voice-providers.js';
 import {
   initialState, isToday, isWorkspaceChange, localDate, makeBackup, makeTask, mergeTasks,
-  newId, orderTasks, parseBackup, readState, sampleTasks, saveState,
+  newId, normalizeTask, orderTasks, parseBackup, readState, sampleTasks, saveState,
 } from './tasks.js';
 import { isVoiceReference, matchVoiceTasks, parseVoiceTasks } from './voice-tasks.js';
 import { applyTaskSync, newSyncState, trackTaskChanges } from './task-sync-state.js';
 import { startTaskSync, syncMessages } from './task-sync.js';
 import {
   collectionPage, focusContent, icon, installContent, moreContent, navigation,
-  pageHeading, pages, searchResults, settingsContent, taskDetailsContent, taskVoiceContent, todayPage, voiceResults,
+  pageHeading, pages, searchResults, settingsContent, taskDetailsContent, taskEditContent, taskVoiceContent, todayPage, voiceResults,
 } from './views.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -46,6 +46,7 @@ let finishedSession;
 let requestedViewFocus = false;
 let reopenSearch = false;
 let openedTaskId;
+let taskEditBase;
 let focusTaskKey;
 let queueSync;
 let syncStatus = import.meta.env.PROD ? 'connecting' : 'local';
@@ -303,6 +304,7 @@ function paintTaskDetails() {
   const task = getTask(openedTaskId);
   $('#editor-heading', editor).textContent = task?.title ?? 'Task unavailable';
   $('#voice-task', editor).disabled = !task;
+  $('[data-action="edit-task-manually"]', editor).disabled = !task;
   markUp($('#task-details-body', editor), task ? taskDetailsContent(task, today) : '<p>This task is no longer available.</p>');
 }
 
@@ -311,8 +313,73 @@ function openTask(id, listen = false) {
   if (!task) return;
   reopenSearch = search.open;
   openedTaskId = id;
+  taskEditBase = null;
   openDialog(editor, taskVoiceContent(task, today));
   if (listen) voice.toggle('task', { taskId: id });
+}
+
+function beginTaskEdit() {
+  const task = getTask(openedTaskId);
+  if (!task) return;
+  voice.cancel('task');
+  taskEditBase = task;
+  const body = $('#task-edit-body', editor);
+  body.innerHTML = taskEditContent(task);
+  $('#task-view', editor).hidden = true;
+  body.hidden = false;
+  $('#task-edit-title', body).focus();
+}
+
+function endTaskEdit() {
+  taskEditBase = null;
+  const body = $('#task-edit-body', editor);
+  body.hidden = true;
+  body.replaceChildren();
+  $('#task-view', editor).hidden = false;
+  const edit = $('[data-action="edit-task-manually"]', editor);
+  (edit.disabled ? $('.dialog-heading button', editor) : edit).focus();
+}
+
+function saveTaskEdit(form) {
+  const base = taskEditBase;
+  if (!base) return;
+  const error = $('#task-edit-error', form);
+  const values = Object.fromEntries(new FormData(form));
+  const normalized = normalizeTask({ ...base, ...values, minutes: Number(values.minutes) });
+  if (!normalized) {
+    error.textContent = 'Enter a task name.';
+    $('#task-edit-title', form).focus();
+    return;
+  }
+
+  const stepsChanged = values.stepTitles !== base.steps.map((step) => step.title).join('\n');
+  const stepTitles = stepsChanged ? values.stepTitles.split('\n').map((line) => line.trim()).filter(Boolean) : null;
+  if (stepTitles && (stepTitles.length > 20 || stepTitles.some((title) => title.length > 140))) {
+    error.textContent = 'Use up to 20 steps, with 140 characters per step.';
+    $('.task-edit-steps', form).open = true;
+    form.elements.stepTitles.focus();
+    return;
+  }
+
+  // Compare with the draft's starting values so a sync can update untouched fields while the form is open.
+  const fields = ['title', 'space', 'priority', 'plan', 'due', 'minutes', 'notes'];
+  const changes = fields.filter((field) => normalized[field] !== base[field]);
+  if (!changes.length && !stepTitles) return endTaskEdit();
+  const patch = Object.fromEntries(changes.map((field) => [field, normalized[field]]));
+  const { before, after } = updateTask(base.id, (task) => ({
+    ...task,
+    ...patch,
+    steps: stepTitles ? replaceSteps(stepTitles, task.steps) : task.steps,
+    sample: false,
+  }));
+  if (!after) {
+    error.textContent = 'This task is no longer available.';
+    return;
+  }
+  endTaskEdit();
+  notify('Task updated.', {
+    undo: () => updateTask(after.id, (task) => task.updatedAt === after.updatedAt ? before : task),
+  });
 }
 
 function speakInWorkspace() {
@@ -664,6 +731,8 @@ const actions = {
   'voice-choose': (button) => chooseVoiceTask(button.dataset.id),
   'remove-capture-key': (button) => saveCaptureKey(button.form, true),
   edit: (button) => openTask(button.dataset.id),
+  'edit-task-manually': beginTaskEdit,
+  'cancel-task-edit': endTaskEdit,
   plan: (button) => planTask(button.dataset.id, today),
   unplan: (button) => planTask(button.dataset.id, ''),
   delete: (button) => deleteTask(button.dataset.id),
@@ -723,6 +792,9 @@ document.addEventListener('submit', (event) => {
   if (form.hasAttribute('data-capture-key')) {
     event.preventDefault();
     saveCaptureKey(form);
+  } else if (form.id === 'task-edit-form') {
+    event.preventDefault();
+    saveTaskEdit(form);
   }
 });
 
@@ -757,6 +829,7 @@ document.addEventListener('change', (event) => {
 
 document.addEventListener('input', (event) => {
   if (event.target.id === 'search-query') paintSearch();
+  if (event.target.form?.id === 'task-edit-form') $('#task-edit-error', event.target.form).textContent = '';
 });
 
 document.addEventListener('keydown', (event) => {
@@ -765,7 +838,8 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     if (open) {
       event.preventDefault();
-      open.close();
+      if (open === editor && taskEditBase) endTaskEdit();
+      else open.close();
       return;
     }
     if (voice.cancel()) event.preventDefault();
@@ -796,6 +870,7 @@ for (const dialog of $$('dialog')) {
     if (dialog === editor && !editor.open) {
       voice.cancel('task');
       openedTaskId = null;
+      taskEditBase = null;
     }
     if (dialog === settings && !settings.open) {
       for (const form of $$('[data-capture-key]', settings)) form.reset();
@@ -812,7 +887,7 @@ for (const dialog of $$('dialog')) {
       return;
     }
     const trigger = visibleElement(dialogReturn.get(dialog));
-    if (trigger && !requestedViewFocus) trigger.focus({ preventScroll: true });
+    if (!requestedViewFocus) (trigger ?? (dialog === editor ? $('#page-title') : null))?.focus({ preventScroll: true });
   });
   dialog.addEventListener('click', (event) => {
     if (event.target !== dialog) return;

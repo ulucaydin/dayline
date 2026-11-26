@@ -346,8 +346,50 @@ export function taskDetailsContent(task, today) {
 
 export function taskVoiceContent(task, today) {
   return `${dialogHeading('editor-heading', escape(task.title))}
-    ${voiceCapture(true)}
-    <div id="task-details-body">${taskDetailsContent(task, today)}</div>`;
+    <div id="task-view">
+      ${voiceCapture(true)}
+      <button type="button" class="button secondary task-edit-trigger" data-action="edit-task-manually">Edit task</button>
+      <div id="task-details-body">${taskDetailsContent(task, today)}</div>
+    </div>
+    <div id="task-edit-body" hidden></div>`;
+}
+
+export function taskEditContent(task) {
+  const select = (name, label, options) => `<label class="field">${label}
+    <select name="${name}">${options.map(([value, text]) =>
+      `<option value="${value}"${task[name] === value ? ' selected' : ''}>${text}</option>`).join('')}</select>
+  </label>`;
+  const dateField = (name, label) => `<label class="field">${label}
+    <input name="${name}" type="date" min="0001-01-01" max="9999-12-31" value="${escape(task[name])}" />
+  </label>`;
+  return `<form id="task-edit-form" class="task-edit-form">
+    <label class="field">Task name
+      <textarea id="task-edit-title" name="title" rows="1" maxlength="140" required>${escape(task.title)}</textarea>
+    </label>
+    <div class="task-edit-fields">
+      ${select('space', 'Space', Object.entries(spaces).map(([value, space]) => [value, space.label]))}
+      ${select('priority', 'Priority', [['normal', 'Normal'], ['high', 'High'], ['low', 'Low']])}
+      ${dateField('plan', 'Planned date')}
+      ${dateField('due', 'Due date')}
+      <label class="field">Estimate (minutes)
+        <input name="minutes" type="number" min="1" max="480" step="1" inputmode="numeric" value="${task.minutes ?? ''}" />
+      </label>
+    </div>
+    <label class="field">Notes
+      <textarea name="notes" rows="2" maxlength="1800">${escape(task.notes)}</textarea>
+    </label>
+    <details class="task-edit-steps">
+      <summary>${icon('caret-right')} Edit steps</summary>
+      <label class="field">One step per line
+        <textarea name="stepTitles" rows="3">${escape(task.steps.map((step) => step.title).join('\n'))}</textarea>
+      </label>
+    </details>
+    <p id="task-edit-error" class="task-edit-error" role="alert"></p>
+    <div class="dialog-actions">
+      <button type="button" class="button secondary" data-action="cancel-task-edit">Cancel</button>
+      <button type="submit" class="button primary">Save changes</button>
+    </div>
+  </form>`;
 }
 
 export function voiceResults(entries, choice, today) {

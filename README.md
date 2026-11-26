@@ -18,6 +18,7 @@ Dayline is an installable, offline-capable task planner for choosing one next st
 
 - Tap **Talk to Dayline**, choose **Speak** from navigation, or press **N**. Say “Call the dentist tomorrow and send the recap by Friday for work.” Tap **Finish recording** to save your request. Pauses leave the mic on until you finish or reach the time limit. Change the default five-minute limit in **Settings → Task capture**.
 - Use a task’s mic to say a change like “Move it to Friday and make it high priority” or “Add a note to bring the referral.” You can also name a task from the main mic. Tap a task to see its details, and use **Undo** after saving to reverse the latest voice action.
+- To use the keyboard, open an existing task and select **Edit task**. Make your changes and select **Save changes**.
 - Use the mic in Today for tasks you plan to work on today, and in Inbox to save something for later. **Next** with a weekday means the following calendar week, starting Monday.
 - Use **Today** to see what’s planned and due across both spaces. **Smart sort** weighs deadlines, priority, and estimated effort. **Light tasks** gives short tasks an extra boost.
 - The suggested task shows its first unchecked step. Choose **Start focus** to open the task and a timer, and check off steps as you go.
