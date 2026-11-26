@@ -13,7 +13,7 @@ import { applyTaskSync, newSyncState, trackTaskChanges } from './task-sync-state
 import { startTaskSync, syncMessages } from './task-sync.js';
 import {
   collectionPage, focusContent, icon, installContent, moreContent, navigation,
-  pageHeading, pages, searchResults, settingsContent, taskDetailsContent, taskEditContent, taskVoiceContent, todayPage, voiceResults,
+  pageHeading, pages, searchResults, settingsContent, taskDialogContent, taskFormValues, todayPage, voiceResults,
 } from './views.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -46,7 +46,7 @@ let finishedSession;
 let requestedViewFocus = false;
 let reopenSearch = false;
 let openedTaskId;
-let taskEditBase;
+let savedTaskFields;
 let focusTaskKey;
 let queueSync;
 let syncStatus = import.meta.env.PROD ? 'connecting' : 'local';
@@ -300,12 +300,35 @@ async function saveCaptureKey(form, remove = false) {
   }
 }
 
-function paintTaskDetails() {
+function paintTaskEditActions(form) {
+  const dirty = Object.entries(savedTaskFields).some(([name, value]) => {
+    const input = form.elements.namedItem(name);
+    return input.value !== value || input.validity.badInput;
+  });
+  $('button[type="submit"]', form).disabled = !dirty;
+  $('[data-action="discard-task-edits"]', form).hidden = !dirty;
+}
+
+function paintTaskDetails(refresh = []) {
   const task = getTask(openedTaskId);
   $('#editor-heading', editor).textContent = task?.title ?? 'Task unavailable';
   $('#voice-task', editor).disabled = !task;
-  $('[data-action="edit-task-manually"]', editor).disabled = !task;
-  markUp($('#task-details-body', editor), task ? taskDetailsContent(task, today) : '<p>This task is no longer available.</p>');
+  $('#task-unavailable', editor).hidden = Boolean(task);
+  const form = $('#task-edit-form', editor);
+  form.hidden = !task;
+  if (!task) return;
+
+  const values = taskFormValues(task);
+  for (const [name, value] of Object.entries(values)) {
+    const input = form.elements.namedItem(name);
+    const untouched = input.value === savedTaskFields[name] && !input.validity.badInput;
+    if ((refresh.includes(name) || untouched) && (input.value !== value || input.validity.badInput)) input.value = value;
+  }
+  savedTaskFields = values;
+  $('#task-completed', form).hidden = !task.completedAt;
+  const done = task.steps.filter((step) => step.done).length;
+  $('#task-steps-progress', form).textContent = task.steps.length ? `${done} of ${task.steps.length} complete` : '';
+  paintTaskEditActions(form);
 }
 
 function openTask(id, listen = false) {
@@ -313,46 +336,32 @@ function openTask(id, listen = false) {
   if (!task) return;
   reopenSearch = search.open;
   openedTaskId = id;
-  taskEditBase = null;
-  openDialog(editor, taskVoiceContent(task, today));
+  savedTaskFields = taskFormValues(task);
+  openDialog(editor, taskDialogContent(task, savedTaskFields));
+  $('#editor-heading', editor).tabIndex = -1;
+  paintTaskDetails();
   if (listen) voice.toggle('task', { taskId: id });
 }
 
-function beginTaskEdit() {
-  const task = getTask(openedTaskId);
-  if (!task) return;
-  voice.cancel('task');
-  taskEditBase = task;
-  const body = $('#task-edit-body', editor);
-  body.innerHTML = taskEditContent(task);
-  $('#task-view', editor).hidden = true;
-  body.hidden = false;
-  $('#task-edit-title', body).focus();
-}
-
-function endTaskEdit() {
-  taskEditBase = null;
-  const body = $('#task-edit-body', editor);
-  body.hidden = true;
-  body.replaceChildren();
-  $('#task-view', editor).hidden = false;
-  const edit = $('[data-action="edit-task-manually"]', editor);
-  (edit.disabled ? $('.dialog-heading button', editor) : edit).focus();
+function resetTaskEdit() {
+  $('#task-edit-error', editor).textContent = '';
+  $('#editor-heading', editor).focus({ preventScroll: true });
+  paintTaskDetails(Object.keys(savedTaskFields));
 }
 
 function saveTaskEdit(form) {
-  const base = taskEditBase;
-  if (!base) return;
+  const task = getTask(openedTaskId);
+  if (!task) return;
   const error = $('#task-edit-error', form);
   const values = Object.fromEntries(new FormData(form));
-  const normalized = normalizeTask({ ...base, ...values, minutes: Number(values.minutes) });
+  const normalized = normalizeTask({ ...task, ...values, minutes: Number(values.minutes) });
   if (!normalized) {
     error.textContent = 'Enter a task name.';
     $('#task-edit-title', form).focus();
     return;
   }
 
-  const stepsChanged = values.stepTitles !== base.steps.map((step) => step.title).join('\n');
+  const stepsChanged = values.stepTitles !== savedTaskFields.stepTitles;
   const stepTitles = stepsChanged ? values.stepTitles.split('\n').map((line) => line.trim()).filter(Boolean) : null;
   if (stepTitles && (stepTitles.length > 20 || stepTitles.some((title) => title.length > 140))) {
     error.textContent = 'Use up to 20 steps, with 140 characters per step.';
@@ -361,22 +370,21 @@ function saveTaskEdit(form) {
     return;
   }
 
-  // Compare with the draft's starting values so a sync can update untouched fields while the form is open.
-  const fields = ['title', 'space', 'priority', 'plan', 'due', 'minutes', 'notes'];
-  const changes = fields.filter((field) => normalized[field] !== base[field]);
-  if (!changes.length && !stepTitles) return endTaskEdit();
+  const changes = Object.keys(savedTaskFields).filter((name) =>
+    name !== 'stepTitles' && values[name] !== savedTaskFields[name] && normalized[name] !== task[name]);
+  if (!changes.length && !stepTitles) return resetTaskEdit();
   const patch = Object.fromEntries(changes.map((field) => [field, normalized[field]]));
-  const { before, after } = updateTask(base.id, (task) => ({
-    ...task,
+  const { before, after } = updateTask(task.id, (current) => ({
+    ...current,
     ...patch,
-    steps: stepTitles ? replaceSteps(stepTitles, task.steps) : task.steps,
+    steps: stepTitles ? replaceSteps(stepTitles, current.steps) : current.steps,
     sample: false,
   }));
   if (!after) {
     error.textContent = 'This task is no longer available.';
     return;
   }
-  endTaskEdit();
+  resetTaskEdit();
   notify('Task updated.', {
     undo: () => updateTask(after.id, (task) => task.updatedAt === after.updatedAt ? before : task),
   });
@@ -492,6 +500,15 @@ function applyVoiceActions(commands, context) {
     }
     return changes.size ? { ...current, tasks: [...tasks.values()] } : current;
   });
+  const openChange = editor.open && changes.get(openedTaskId);
+  if (openChange?.before) {
+    // A new voice update takes precedence for the fields it changed. Keep drafts in the other fields.
+    const before = taskFormValues(openChange.before);
+    const after = taskFormValues(openChange.after);
+    const changed = Object.keys(after).filter((name) => before[name] !== after[name]);
+    paintTaskDetails(changed);
+    if (changed.includes('stepTitles')) $('.task-edit-steps', editor).open = true;
+  }
   latestVoiceChanges = [...changes].map(([id, { before }]) => ({ id, created: !before }));
   voiceChoice = choice;
   lastVoiceTask = changes.size > 1 ? null : recent;
@@ -731,8 +748,7 @@ const actions = {
   'voice-choose': (button) => chooseVoiceTask(button.dataset.id),
   'remove-capture-key': (button) => saveCaptureKey(button.form, true),
   edit: (button) => openTask(button.dataset.id),
-  'edit-task-manually': beginTaskEdit,
-  'cancel-task-edit': endTaskEdit,
+  'discard-task-edits': resetTaskEdit,
   plan: (button) => planTask(button.dataset.id, today),
   unplan: (button) => planTask(button.dataset.id, ''),
   delete: (button) => deleteTask(button.dataset.id),
@@ -829,7 +845,11 @@ document.addEventListener('change', (event) => {
 
 document.addEventListener('input', (event) => {
   if (event.target.id === 'search-query') paintSearch();
-  if (event.target.form?.id === 'task-edit-form') $('#task-edit-error', event.target.form).textContent = '';
+  const form = event.target.form;
+  if (form?.id === 'task-edit-form') {
+    $('#task-edit-error', form).textContent = '';
+    paintTaskEditActions(form);
+  }
 });
 
 document.addEventListener('keydown', (event) => {
@@ -838,8 +858,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     if (open) {
       event.preventDefault();
-      if (open === editor && taskEditBase) endTaskEdit();
-      else open.close();
+      open.close();
       return;
     }
     if (voice.cancel()) event.preventDefault();
@@ -870,7 +889,7 @@ for (const dialog of $$('dialog')) {
     if (dialog === editor && !editor.open) {
       voice.cancel('task');
       openedTaskId = null;
-      taskEditBase = null;
+      savedTaskFields = null;
     }
     if (dialog === settings && !settings.open) {
       for (const form of $$('[data-capture-key]', settings)) form.reset();

@@ -202,7 +202,7 @@ function voiceCapture(task = false) {
   const label = task ? 'Update by voice' : 'Talk to Dayline';
   const hint = task ? 'Try “Move it to Friday.”' : 'Say what you want to add or change.';
   return `<div class="voice-capture">
-    <button type="button" id="${id}" class="voice-trigger" data-action="${task ? 'voice-task' : 'voice-main'}" data-voice-control="${surface}" data-voice-label="${label}" aria-describedby="${id}-hint">
+    <button type="button" id="${id}" class="voice-trigger" data-action="${task ? 'voice-task' : 'voice-main'}" data-voice-control="${surface}" data-voice-label="${label}" aria-label="${label}" aria-describedby="${id}-hint">
       <span class="voice-emblem" aria-hidden="true">
         <span class="mic-symbol" aria-hidden="true"></span>
       </span>
@@ -328,43 +328,28 @@ export function dialogHeading(id, title, subtitle = '') {
   </div>`;
 }
 
-export function taskDetailsContent(task, today) {
-  const timing = (date) => escape(dateText(date, today));
-  const metadata = [
-    ['Space', spaces[task.space].label],
-    ['Priority', task.priority[0].toUpperCase() + task.priority.slice(1)],
-    task.due && ['Due', timing(task.due)],
-    task.plan && ['Planned', timing(task.plan)],
-    task.minutes && ['Estimate', `${task.minutes} min`],
-    task.completedAt && ['Status', 'Completed'],
-  ].filter(Boolean);
-  return `<dl class="task-details-meta">${metadata.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}</dl>
-    ${task.notes ? `<section class="task-detail-section"><h3>Notes</h3><p>${escape(task.notes)}</p></section>` : ''}
-    ${task.steps.length ? `<section class="task-detail-section"><h3>Steps</h3><ul>${task.steps.map((step) =>
-      `<li${step.done ? ' class="is-done"' : ''}>${icon(step.done ? 'check-circle' : 'circle')} ${escape(step.title)}</li>`).join('')}</ul></section>` : ''}`;
+export function taskFormValues(task) {
+  const { title, space, priority, plan, due, minutes, notes, steps } = task;
+  const lines = (value) => value.replace(/\r\n?/g, '\n');
+  return { title: lines(title), space, priority, plan, due, minutes: String(minutes ?? ''),
+    notes: lines(notes), stepTitles: lines(steps.map((step) => step.title).join('\n')) };
 }
 
-export function taskVoiceContent(task, today) {
-  return `${dialogHeading('editor-heading', escape(task.title))}
-    <div id="task-view">
-      ${voiceCapture(true)}
-      <button type="button" class="button secondary task-edit-trigger" data-action="edit-task-manually">Edit task</button>
-      <div id="task-details-body">${taskDetailsContent(task, today)}</div>
-    </div>
-    <div id="task-edit-body" hidden></div>`;
-}
-
-export function taskEditContent(task) {
+export function taskDialogContent(task, values) {
   const select = (name, label, options) => `<label class="field">${label}
     <select name="${name}">${options.map(([value, text]) =>
-      `<option value="${value}"${task[name] === value ? ' selected' : ''}>${text}</option>`).join('')}</select>
+      `<option value="${value}"${values[name] === value ? ' selected' : ''}>${text}</option>`).join('')}</select>
   </label>`;
   const dateField = (name, label) => `<label class="field">${label}
-    <input name="${name}" type="date" min="0001-01-01" max="9999-12-31" value="${escape(task[name])}" />
+    <input name="${name}" type="date" min="0001-01-01" max="9999-12-31" value="${escape(values[name])}" />
   </label>`;
-  return `<form id="task-edit-form" class="task-edit-form">
+  return `${dialogHeading('editor-heading', escape(task.title))}
+    ${voiceCapture(true)}
+    <p id="task-unavailable" class="task-edit-status" hidden>This task is no longer available.</p>
+    <form id="task-edit-form" class="task-edit-form">
+    <p id="task-completed" class="task-edit-status"${task.completedAt ? '' : ' hidden'}>${icon('check-circle')} Completed</p>
     <label class="field">Task name
-      <textarea id="task-edit-title" name="title" rows="1" maxlength="140" required>${escape(task.title)}</textarea>
+      <textarea id="task-edit-title" name="title" rows="1" maxlength="140" required>${escape(values.title)}</textarea>
     </label>
     <div class="task-edit-fields">
       ${select('space', 'Space', Object.entries(spaces).map(([value, space]) => [value, space.label]))}
@@ -372,22 +357,22 @@ export function taskEditContent(task) {
       ${dateField('plan', 'Planned date')}
       ${dateField('due', 'Due date')}
       <label class="field">Estimate (minutes)
-        <input name="minutes" type="number" min="1" max="480" step="1" inputmode="numeric" value="${task.minutes ?? ''}" />
+        <input name="minutes" type="number" min="1" max="480" step="1" inputmode="numeric" value="${values.minutes}" />
       </label>
     </div>
     <label class="field">Notes
-      <textarea name="notes" rows="2" maxlength="1800">${escape(task.notes)}</textarea>
+      <textarea name="notes" rows="2" maxlength="1800">${escape(values.notes)}</textarea>
     </label>
     <details class="task-edit-steps">
-      <summary>${icon('caret-right')} Edit steps</summary>
+      <summary>${icon('caret-right')} Steps <span id="task-steps-progress"></span></summary>
       <label class="field">One step per line
-        <textarea name="stepTitles" rows="3">${escape(task.steps.map((step) => step.title).join('\n'))}</textarea>
+        <textarea name="stepTitles" rows="3">${escape(values.stepTitles)}</textarea>
       </label>
     </details>
     <p id="task-edit-error" class="task-edit-error" role="alert"></p>
     <div class="dialog-actions">
-      <button type="button" class="button secondary" data-action="cancel-task-edit">Cancel</button>
-      <button type="submit" class="button primary">Save changes</button>
+      <button type="button" class="button secondary" data-action="discard-task-edits" hidden>Discard changes</button>
+      <button type="submit" class="button primary" disabled>Save changes</button>
     </div>
   </form>`;
 }
